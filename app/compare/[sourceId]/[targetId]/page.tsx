@@ -25,10 +25,9 @@ export default async function ComparisonPage({
   const targetRow = data?.find((b) => b.id === targetId);
   if (!sourceRow || !targetRow) notFound();
 
-  const result = compareBuilds(
-    sourceRow.parsed as unknown as PobBuild,
-    targetRow.parsed as unknown as PobBuild,
-  );
+  const source = sourceRow.parsed as unknown as PobBuild;
+  const target = targetRow.parsed as unknown as PobBuild;
+  const result = compareBuilds(source, target);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
@@ -39,6 +38,8 @@ export default async function ComparisonPage({
         result={result}
         sourceName={sourceRow.name}
         targetName={targetRow.name}
+        sourceNodes={source.tree.nodes}
+        targetNodes={target.tree.nodes}
       />
     </main>
   );

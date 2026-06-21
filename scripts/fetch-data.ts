@@ -21,6 +21,7 @@ const ROOT = join(__dirname, "..");
 const CACHE_DIR = join(ROOT, "data", ".cache");
 const CACHE_FILE = join(CACHE_DIR, "poe2-tree.json");
 const OUT_FILE = join(ROOT, "data", "tree-nodes.json");
+const LAYOUT_FILE = join(ROOT, "public", "tree-layout.json");
 
 const SOURCE_URL =
   "https://raw.githubusercontent.com/grindinggear/poe2-skilltree-export/main/data.json";
@@ -36,6 +37,9 @@ interface TreeNode {
   isMastery?: boolean;
   isJewelSocket?: boolean;
   ascendancyName?: string;
+  ascendancyId?: string;
+  x?: number;
+  y?: number;
 }
 
 interface CompactNode {
@@ -99,6 +103,42 @@ async function main() {
   writeFileSync(OUT_FILE, JSON.stringify(map), "utf8");
   console.log(
     `\nWrote ${Object.keys(map).length} nodes -> ${OUT_FILE} (${(JSON.stringify(map).length / 1024).toFixed(0)} KB)`,
+  );
+
+  // ---- Client render layout (coords + edges), excluding ascendancy subtrees ----
+  const layoutNodes: Record<string, { x: number; y: number; k: string; name: string }> = {};
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const node of Object.values(nodes)) {
+    if (node.skill == null || node.x == null || node.y == null) continue;
+    if (node.ascendancyId) continue; // main tree only for v1
+    const k = node.isKeystone
+      ? "K"
+      : node.isNotable
+        ? "N"
+        : node.isMastery
+          ? "M"
+          : node.isJewelSocket
+            ? "J"
+            : "n";
+    layoutNodes[String(node.skill)] = { x: node.x, y: node.y, k, name: node.name ?? "" };
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x);
+    maxY = Math.max(maxY, node.y);
+  }
+
+  const edges: [number, number][] = [];
+  for (const e of (data.edges ?? []) as { from: unknown; to: unknown }[]) {
+    const f = Number(e.from);
+    const t = Number(e.to);
+    if (!Number.isFinite(f) || !Number.isFinite(t)) continue; // skip "root" pseudo-node
+    if (layoutNodes[String(f)] && layoutNodes[String(t)]) edges.push([f, t]);
+  }
+
+  const layout = { bounds: { minX, minY, maxX, maxY }, nodes: layoutNodes, edges };
+  writeFileSync(LAYOUT_FILE, JSON.stringify(layout), "utf8");
+  console.log(
+    `Wrote ${Object.keys(layoutNodes).length} nodes + ${edges.length} edges -> ${LAYOUT_FILE} (${(JSON.stringify(layout).length / 1024).toFixed(0)} KB)`,
   );
 }
 

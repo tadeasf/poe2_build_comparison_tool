@@ -1,5 +1,6 @@
 import { ArrowRight, TriangleAlert } from "lucide-react";
 import { Checklist } from "@/components/checklist";
+import { PassiveTree } from "@/components/tree/passive-tree";
 import {
   Accordion,
   AccordionContent,
@@ -48,10 +49,14 @@ export function ComparisonView({
   result,
   sourceName,
   targetName,
+  sourceNodes,
+  targetNodes,
 }: {
   result: ComparisonResult;
   sourceName: string;
   targetName: string;
+  sourceNodes: number[];
+  targetNodes: number[];
 }) {
   const { tree, items, gems } = result;
   const equipCount = items.slots.length;
@@ -87,6 +92,14 @@ export function ComparisonView({
 
       {/* Checklist */}
       <Checklist items={result.checklist} />
+
+      {/* Visual tree map */}
+      <div className="space-y-2">
+        <h2 className="font-semibold">Passive tree map</h2>
+        <div className="h-[520px] w-full overflow-hidden rounded-lg border border-border/60 bg-card">
+          <PassiveTree sourceNodes={sourceNodes} targetNodes={targetNodes} />
+        </div>
+      </div>
 
       {/* Categorized detail */}
       <Accordion type="multiple" defaultValue={["tree", "equipment", "gems"]}>
