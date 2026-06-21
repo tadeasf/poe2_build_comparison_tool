@@ -42,3 +42,7 @@ next-env.d.ts
 
 # serena (local tool config)
 /.serena/
+
+# playwright mcp + local screenshots
+/.playwright-mcp/
+/*.png
