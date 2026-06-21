@@ -63,6 +63,59 @@ function NodeList({ refs, tone }: { refs: TreeNodeRef[]; tone: "add" | "remove" 
 
 const SET_LABEL = { common: "Common", set1: "Set I", set2: "Set II" } as const;
 
+/**
+ * A tree change group (Allocate / Refund) that, when any nodes are weapon-set
+ * specific, breaks them out under "Weapon Set I/II" so the per-set point cost is
+ * obvious (weapon-set points are a separate pool in PoE2).
+ */
+function TreeChange({
+  title,
+  titleColor,
+  refs,
+  tone,
+}: {
+  title: string;
+  titleColor: string;
+  refs: TreeNodeRef[];
+  tone: "add" | "remove";
+}) {
+  const common = refs.filter((r) => (r.set ?? "common") === "common");
+  const set1 = refs.filter((r) => r.set === "set1");
+  const set2 = refs.filter((r) => r.set === "set2");
+  const hasSets = set1.length + set2.length > 0;
+  return (
+    <div className="space-y-1.5">
+      <p className={`text-sm font-medium ${titleColor}`}>
+        {title} ({refs.length})
+        {hasSets && (
+          <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+            Common {common.length} · <span className="text-red-400">Set I {set1.length}</span> ·{" "}
+            <span className="text-green-400">Set II {set2.length}</span>
+          </span>
+        )}
+      </p>
+      {!hasSets && <NodeList refs={refs} tone={tone} />}
+      {hasSets && (
+        <div className="space-y-1.5">
+          {common.length > 0 && <NodeList refs={common} tone={tone} />}
+          {set1.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-red-400">Weapon Set I ({set1.length})</p>
+              <NodeList refs={set1} tone={tone} />
+            </div>
+          )}
+          {set2.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-green-400">Weapon Set II ({set2.length})</p>
+              <NodeList refs={set2} tone={tone} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComparisonView({
   result,
   sourceName,
@@ -181,20 +234,20 @@ export function ComparisonView({
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
             {tree.toAllocate.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-emerald-400">
-                  Allocate ({tree.toAllocate.length})
-                </p>
-                <NodeList refs={tree.toAllocate} tone="add" />
-              </div>
+              <TreeChange
+                title="Allocate"
+                titleColor="text-emerald-400"
+                refs={tree.toAllocate}
+                tone="add"
+              />
             )}
             {tree.toRefund.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-red-400">
-                  Refund ({tree.toRefund.length})
-                </p>
-                <NodeList refs={tree.toRefund} tone="remove" />
-              </div>
+              <TreeChange
+                title="Refund"
+                titleColor="text-red-400"
+                refs={tree.toRefund}
+                tone="remove"
+              />
             )}
             {tree.movedBetweenSets.length > 0 && (
               <div className="space-y-1">

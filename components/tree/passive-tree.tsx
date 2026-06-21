@@ -29,7 +29,8 @@ interface Layout extends SubLayout {
 type NodeState = "none" | "shared" | "allocate" | "refund";
 type WSet = "common" | "set1" | "set2";
 type Rect = { x: number; y: number; w: number; h: number };
-type Filter = "all" | WSet;
+// Filter by diff action (allocate/refund/keep) or by weapon set (set1/set2).
+type Filter = "all" | "allocate" | "refund" | "keep" | "set1" | "set2";
 
 const NODE_COLOR: Record<NodeState, string> = {
   none: "rgba(135,135,150,0.20)",
@@ -49,7 +50,13 @@ const EDGE_SHARED = "rgba(139,147,167,0.55)";
 const EDGE_GREEN = "rgba(52,211,153,0.65)";
 const EDGE_RED = "rgba(248,113,113,0.55)";
 
-const WORLD_R: Record<string, number> = { K: 230, N: 150, M: 120, J: 110, n: 90 };
+// Node radii. Kept comfortably under the ~264-unit median edge length so frames
+// don't overlap (a normal frame ≈ 2·r·FRAME_FACTOR ≈ 150 world units).
+const WORLD_R: Record<string, number> = { K: 150, N: 105, M: 90, J: 85, n: 68 };
+const FRAME_FACTOR = 1.1;
+// Per-state opacity when no specific filter is active: changes (allocate/refund)
+// pop at full strength, kept nodes recede, background barely shows.
+const STATE_ALPHA: Record<NodeState, number> = { none: 0.12, shared: 0.42, allocate: 1, refund: 1 };
 
 // Per node type: which atlas prefix (lit/dim) and frame name (alloc/unalloc) to use.
 const ATLAS_PREFIX: Record<string, { lit: string; dim: string }> = {
@@ -90,6 +97,33 @@ function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, r: Rect, cx:
   ctx.drawImage(img, r.x, r.y, r.w, r.h, cx - side / 2, cy - h / 2, side, h);
 }
 
+/** Small dark chip with a colored "I"/"II" marking a weapon-set-specific node. */
+function drawSetBadge(
+  ctx: CanvasRenderingContext2D,
+  set: Exclude<WSet, "common">,
+  x: number,
+  y: number,
+  frameSide: number,
+  alpha: number,
+) {
+  const r = Math.max(5, frameSide * 0.19);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(8,8,10,0.88)";
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = SET_COLOR[set];
+  ctx.lineWidth = Math.max(0.75, r * 0.2);
+  ctx.stroke();
+  ctx.fillStyle = SET_COLOR[set];
+  ctx.font = `bold ${Math.round(r * 1.25)}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(set === "set1" ? "I" : "II", x, y + r * 0.08);
+  ctx.restore();
+}
+
 export function PassiveTree({
   sourceNodes,
   targetNodes,
@@ -120,6 +154,9 @@ export function PassiveTree({
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const frameReq = useRef(0);
   const sprites = useRef<Sprites>({ ready: false });
+  // Always points at the latest draw closure so the once-registered native wheel
+  // listener never renders a stale model.
+  const drawRef = useRef<() => void>(() => {});
 
   const sets = useMemo(
     () => ({
@@ -272,36 +309,39 @@ export function PassiveTree({
         if (cx < -48 || cy < -48 || cx > cw + 48 || cy > ch + 48) continue; // cull offscreen
 
         const meaningful = st !== "none";
-        const dimByFilter = filter !== "all" && set !== filter;
-        const alpha = dimByFilter ? 0.1 : 1;
-        const dia = 2 * (WORLD_R[n.k] ?? 90) * glyphScale;
-        const frameSide = dia * 1.3;
+        const matches =
+          filter === "all" ||
+          (filter === "allocate" && st === "allocate") ||
+          (filter === "refund" && st === "refund") ||
+          (filter === "keep" && st === "shared") ||
+          (filter === "set1" && set === "set1") ||
+          (filter === "set2" && set === "set2");
+        // No filter → emphasise changes, recede kept nodes. Filter on → matching
+        // nodes full, everything else barely visible.
+        const alpha = !matches ? 0.06 : filter === "all" ? STATE_ALPHA[st] : meaningful ? 1 : 0.12;
+        const dia = 2 * (WORLD_R[n.k] ?? 68) * glyphScale;
+        const frameSide = dia * FRAME_FACTOR;
         // Icons only when big enough to read; always for meaningful (small) nodes, else when zoomed in.
         const wantSprite = sp.ready && (meaningful ? frameSide >= 6 : frameSide >= 18);
 
         if (wantSprite && drawSprite(ctx, sp, n, st, cx, cy, frameSide, alpha)) {
-          // Diff ring (primary node-level signal) for allocate/refund.
+          // Glowing ring marks the actionable changes: allocate (green) / refund (red).
           if (st === "allocate" || st === "refund") {
-            ctx.globalAlpha = 0.95 * alpha;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.shadowColor = NODE_COLOR[st];
+            ctx.shadowBlur = frameSide * 0.45;
             ctx.strokeStyle = NODE_COLOR[st];
-            ctx.lineWidth = Math.max(1, frameSide * 0.07);
+            ctx.lineWidth = Math.max(1.5, frameSide * 0.1);
             ctx.beginPath();
             ctx.arc(cx, cy, frameSide * 0.5, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.globalAlpha = 1;
+            ctx.restore();
           }
-          // Weapon-set badge.
-          if (set !== "common" && frameSide >= 12) {
-            const br = Math.max(2, frameSide * 0.17);
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = SET_COLOR[set];
-            ctx.beginPath();
-            ctx.arc(cx + frameSide * 0.34, cy - frameSide * 0.34, br, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = "rgba(0,0,0,0.65)";
-            ctx.lineWidth = Math.max(0.5, br * 0.25);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
+          // Weapon-set badge: a small "I"/"II" chip (a letter, not a colored dot,
+          // so it never reads as an allocate/refund ring).
+          if (set !== "common" && frameSide >= 16) {
+            drawSetBadge(ctx, set, cx - frameSide * 0.33, cy - frameSide * 0.33, frameSide, alpha);
           }
         } else if (n.k === "M") {
           // Masteries have no atlas icon — draw a distinct diamond marker.
@@ -380,6 +420,11 @@ export function PassiveTree({
     frameReq.current = requestAnimationFrame(draw);
   };
 
+  // Keep the once-registered native wheel listener pointed at the latest draw.
+  useEffect(() => {
+    drawRef.current = draw;
+  });
+
   const fit = () => {
     const c = containerRef.current;
     if (!c || !active) return;
@@ -394,6 +439,22 @@ export function PassiveTree({
       offsetX: w / 2 - ((minX + maxX) / 2) * scale,
       offsetY: h / 2 - ((minY + maxY) / 2) * scale,
     };
+    scheduleDraw();
+  };
+
+  // Zoom by a multiplier, keeping the canvas centre fixed (for the +/- buttons).
+  const zoomBy = (mult: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const mx = canvas.width / dpr / 2;
+    const my = canvas.height / dpr / 2;
+    const v = view.current;
+    const newScale = Math.min(2, Math.max(0.005, v.scale * mult));
+    v.offsetX = mx - ((mx - v.offsetX) / v.scale) * newScale;
+    v.offsetY = my - ((my - v.offsetY) / v.scale) * newScale;
+    v.scale = newScale;
+    setHover(null);
     scheduleDraw();
   };
 
@@ -467,20 +528,32 @@ export function PassiveTree({
     if (drag.current) (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     drag.current = null;
   };
-  const onWheel = (e: React.WheelEvent) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const factor = Math.exp(-e.deltaY * 0.0015);
-    const v = view.current;
-    const newScale = Math.min(2, Math.max(0.005, v.scale * factor));
-    // keep point under cursor fixed
-    v.offsetX = mx - ((mx - v.offsetX) / v.scale) * newScale;
-    v.offsetY = my - ((my - v.offsetY) / v.scale) * newScale;
-    v.scale = newScale;
-    setHover(null);
-    scheduleDraw();
-  };
+
+  // Wheel = zoom. Registered natively with { passive: false } so preventDefault()
+  // actually stops the page from scrolling while zooming over the canvas.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const v = view.current;
+      const newScale = Math.min(2, Math.max(0.005, v.scale * factor));
+      v.offsetX = mx - ((mx - v.offsetX) / v.scale) * newScale;
+      v.offsetY = my - ((my - v.offsetY) / v.scale) * newScale;
+      v.scale = newScale;
+      setHover(null);
+      cancelAnimationFrame(frameReq.current);
+      frameReq.current = requestAnimationFrame(() => drawRef.current());
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+    // Dep on `layout` so this re-runs once the canvas mounts (before layout
+    // loads the component renders a Skeleton, so canvasRef.current is null).
+  }, [layout]);
 
   if (error) {
     return (
@@ -505,7 +578,6 @@ export function PassiveTree({
           endDrag(e);
           setHover(null);
         }}
-        onWheel={onWheel}
       />
 
       {hover && (
@@ -525,37 +597,66 @@ export function PassiveTree({
         </div>
       )}
 
-      {/* Weapon-set filter (main tree only — ascendancy nodes aren't weapon-set) */}
+      {/* Filter chips (main tree) — double as the colour legend. Click to isolate. */}
       {!isAsc && (
-        <div className="absolute top-2 left-2 flex overflow-hidden rounded-md border border-border/60 bg-background/70 text-[11px] backdrop-blur">
-          {(["all", "common", "set1", "set2"] as Filter[]).map((f) => (
+        <div className="absolute top-2 left-2 flex max-w-[calc(100%-5.5rem)] flex-wrap gap-1 text-[11px]">
+          {(
+            [
+              ["all", "All", ""],
+              ["allocate", "Allocate", NODE_COLOR.allocate],
+              ["refund", "Refund", NODE_COLOR.refund],
+              ["keep", "Keep", NODE_COLOR.shared],
+              ["set1", "Set I", SET_COLOR.set1],
+              ["set2", "Set II", SET_COLOR.set2],
+            ] as [Filter, string, string][]
+          ).map(([f, label, color]) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-2 py-1.5 transition-colors sm:py-1 ${
-                filter === f ? "bg-foreground/15 font-medium" : "hover:bg-foreground/5"
+              className={`flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 backdrop-blur transition-colors ${
+                filter === f ? "bg-foreground/25 font-medium" : "bg-background/70 hover:bg-foreground/10"
               }`}
             >
-              {f === "all" ? "All" : f === "common" ? "Common" : f === "set1" ? "Set I" : "Set II"}
+              {color && (
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+              )}
+              {label}
             </button>
           ))}
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-1.5 rounded-md bg-background/70 px-2 py-1 text-[11px] backdrop-blur sm:gap-3">
-        <Legend color={NODE_COLOR.allocate} label="Allocate" />
-        <Legend color={NODE_COLOR.refund} label="Refund" />
-        <Legend color={NODE_COLOR.shared} label="Keep" />
-        {!isAsc && <Legend color={SET_COLOR.set1} label="Set I" />}
-        {!isAsc && <Legend color={SET_COLOR.set2} label="Set II" />}
-      </div>
+      {/* Ascendancy panel has no filter — show a small static legend instead. */}
+      {isAsc && (
+        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-1.5 rounded-md bg-background/70 px-2 py-1 text-[11px] backdrop-blur sm:gap-3">
+          <Legend color={NODE_COLOR.allocate} label="Allocate" />
+          <Legend color={NODE_COLOR.refund} label="Refund" />
+          <Legend color={NODE_COLOR.shared} label="Keep" />
+        </div>
+      )}
 
-      <button
-        onClick={fit}
-        className="absolute top-2 right-2 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs backdrop-blur transition-colors hover:bg-background"
-      >
-        Reset view
-      </button>
+      <div className="absolute top-2 right-2 flex items-center gap-1">
+        <button
+          onClick={() => zoomBy(1 / 1.4)}
+          aria-label="Zoom out"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/70 text-base leading-none backdrop-blur transition-colors hover:bg-background"
+        >
+          −
+        </button>
+        <button
+          onClick={() => zoomBy(1.4)}
+          aria-label="Zoom in"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/70 text-base leading-none backdrop-blur transition-colors hover:bg-background"
+        >
+          +
+        </button>
+        <button
+          onClick={fit}
+          className="rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs backdrop-blur transition-colors hover:bg-background"
+        >
+          Reset view
+        </button>
+      </div>
     </div>
   );
 }

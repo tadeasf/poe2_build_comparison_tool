@@ -272,13 +272,22 @@ function buildChecklist(
     refs.filter((n) => n.isNotable && n.name).map((n) => n.name as string);
   const summarize = (names: string[]) =>
     `${names.slice(0, 6).join(", ")}${names.length > 6 ? `, +${names.length - 6} more` : ""}`;
+  // Weapon-set points are a separate pool, so call out the per-set split.
+  const setSuffix = (refs: TreeNodeRef[]) => {
+    const s1 = refs.filter((n) => n.set === "set1").length;
+    const s2 = refs.filter((n) => n.set === "set2").length;
+    const parts: string[] = [];
+    if (s1) parts.push(`Set I: ${s1}`);
+    if (s2) parts.push(`Set II: ${s2}`);
+    return parts.length ? ` — ${parts.join(", ")}` : "";
+  };
 
   if (tree.toRefund.length) {
     const names = notableNames(tree.toRefund);
     list.push({
       id: "tree-refund",
       category: "tree",
-      action: `Refund ${tree.toRefund.length} passive ${tree.toRefund.length === 1 ? "point" : "points"}`,
+      action: `Refund ${tree.toRefund.length} passive ${tree.toRefund.length === 1 ? "point" : "points"}${setSuffix(tree.toRefund)}`,
       detail: names.length ? `Notables: ${summarize(names)}` : undefined,
     });
   }
@@ -287,7 +296,7 @@ function buildChecklist(
     list.push({
       id: "tree-allocate",
       category: "tree",
-      action: `Allocate ${tree.toAllocate.length} passive ${tree.toAllocate.length === 1 ? "point" : "points"}`,
+      action: `Allocate ${tree.toAllocate.length} passive ${tree.toAllocate.length === 1 ? "point" : "points"}${setSuffix(tree.toAllocate)}`,
       detail: names.length
         ? `Notables: ${summarize(names)}`
         : `Net ${tree.netChange >= 0 ? "+" : ""}${tree.netChange} points`,
