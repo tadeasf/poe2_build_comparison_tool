@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import type { ComparisonResult } from "@/lib/diff/types";
+import type { ComparisonResult, TreeNodeRef } from "@/lib/diff/types";
 
 function SectionCount({ n }: { n: number }) {
   return (
@@ -18,25 +18,26 @@ function SectionCount({ n }: { n: number }) {
   );
 }
 
-function NodeChips({ ids, tone }: { ids: number[]; tone: "add" | "remove" }) {
-  const shown = ids.slice(0, 60);
+function NodeList({ refs, tone }: { refs: TreeNodeRef[]; tone: "add" | "remove" }) {
+  const notables = refs.filter((r) => r.isNotable);
+  const minor = refs.length - notables.length;
   const color =
     tone === "add"
       ? "text-emerald-400 border-emerald-500/30"
       : "text-red-400 border-red-500/30";
   return (
     <div className="flex flex-wrap gap-1">
-      {shown.map((id) => (
+      {notables.map((r) => (
         <span
-          key={id}
-          className={`rounded border ${color} bg-background/40 px-1.5 py-0.5 font-mono text-[11px]`}
+          key={r.id}
+          className={`rounded border ${color} bg-background/40 px-1.5 py-0.5 text-[11px] font-medium`}
         >
-          {id}
+          {r.name ?? `Node ${r.id}`}
         </span>
       ))}
-      {ids.length > shown.length && (
-        <span className="px-1.5 py-0.5 text-[11px] text-muted-foreground">
-          +{ids.length - shown.length} more
+      {minor > 0 && (
+        <span className="rounded border border-border/60 bg-background/40 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          +{minor} minor {minor === 1 ? "passive" : "passives"}
         </span>
       )}
     </div>
@@ -104,7 +105,7 @@ export function ComparisonView({
                 <p className="text-sm font-medium text-emerald-400">
                   Allocate ({tree.toAllocate.length})
                 </p>
-                <NodeChips ids={tree.toAllocate.map((n) => n.id)} tone="add" />
+                <NodeList refs={tree.toAllocate} tone="add" />
               </div>
             )}
             {tree.toRefund.length > 0 && (
@@ -112,15 +113,15 @@ export function ComparisonView({
                 <p className="text-sm font-medium text-red-400">
                   Refund ({tree.toRefund.length})
                 </p>
-                <NodeChips ids={tree.toRefund.map((n) => n.id)} tone="remove" />
+                <NodeList refs={tree.toRefund} tone="remove" />
               </div>
             )}
             {tree.toAllocate.length === 0 && tree.toRefund.length === 0 && (
               <p className="text-sm text-muted-foreground">Passive trees are identical.</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Node names and the visual tree overlay are coming next; for now these are
-              passive node IDs.
+              Notables are named; minor passives are summarized. The interactive visual
+              tree overlay is coming next.
             </p>
           </AccordionContent>
         </AccordionItem>

@@ -1,4 +1,5 @@
 import type { PobBuild, PobItem, PobSkillGroup } from "../pob/types";
+import { resolveNode } from "../tree/nodes";
 import type {
   AscendancyDiff,
   ChecklistItem,
@@ -35,7 +36,15 @@ export function ascendancyDiff(source: PobBuild, target: PobBuild): AscendancyDi
 export function treeDiff(source: PobBuild, target: PobBuild): TreeDiff {
   const s = new Set(source.tree.nodes);
   const t = new Set(target.tree.nodes);
-  const ref = (id: number): TreeNodeRef => ({ id });
+  const ref = (id: number): TreeNodeRef => {
+    const info = resolveNode(id);
+    return {
+      id,
+      name: info?.name,
+      isNotable: info?.notable || info?.keystone || false,
+      isAscendancy: info?.ascendancy != null,
+    };
+  };
 
   const toAllocate = [...t].filter((n) => !s.has(n)).map(ref);
   const toRefund = [...s].filter((n) => !t.has(n)).map(ref);
@@ -226,19 +235,29 @@ function buildChecklist(
   const list: ChecklistItem[] = [];
 
   // 1. Refund, 2. Allocate
+  const notableNames = (refs: TreeNodeRef[]) =>
+    refs.filter((n) => n.isNotable && n.name).map((n) => n.name as string);
+  const summarize = (names: string[]) =>
+    `${names.slice(0, 6).join(", ")}${names.length > 6 ? `, +${names.length - 6} more` : ""}`;
+
   if (tree.toRefund.length) {
+    const names = notableNames(tree.toRefund);
     list.push({
       id: "tree-refund",
       category: "tree",
       action: `Refund ${tree.toRefund.length} passive ${tree.toRefund.length === 1 ? "point" : "points"}`,
+      detail: names.length ? `Notables: ${summarize(names)}` : undefined,
     });
   }
   if (tree.toAllocate.length) {
+    const names = notableNames(tree.toAllocate);
     list.push({
       id: "tree-allocate",
       category: "tree",
       action: `Allocate ${tree.toAllocate.length} passive ${tree.toAllocate.length === 1 ? "point" : "points"}`,
-      detail: `Net ${tree.netChange >= 0 ? "+" : ""}${tree.netChange} points vs. your build`,
+      detail: names.length
+        ? `Notables: ${summarize(names)}`
+        : `Net ${tree.netChange >= 0 ? "+" : ""}${tree.netChange} points`,
     });
   }
 
