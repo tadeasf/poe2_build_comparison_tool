@@ -38,7 +38,7 @@ export function AuthForm({
             : "Sign in to your build library."}
         </CardDescription>
       </CardHeader>
-      <form action={formAction}>
+      <form action={formAction} className="flex flex-col gap-6">
         <CardContent className="space-y-4">
           {isSignup && (
             <div className="space-y-2">

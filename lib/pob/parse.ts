@@ -57,11 +57,21 @@ function textOf(node: any): string | undefined {
   return String(node);
 }
 
-function parseSpec(specEl: any): PobTreeSpec {
-  const nodes = String(specEl["@_nodes"] ?? "")
+/** Parse a comma-separated PoB node-id list (e.g. "58814,244,9745") to numbers. */
+function idList(raw: unknown): number[] {
+  return String(raw ?? "")
     .split(",")
     .map((s) => parseInt(s, 10))
     .filter((n) => Number.isFinite(n));
+}
+
+function parseSpec(specEl: any): PobTreeSpec {
+  const nodes = idList(specEl["@_nodes"]);
+
+  // PoB2 records weapon-set-specific passives as <WeaponSet1>/<WeaponSet2>
+  // children of <Spec>, each a comma-separated subset of `nodes`.
+  const weaponSet1Nodes = idList(asArray(specEl?.WeaponSet1)[0]?.["@_nodes"]);
+  const weaponSet2Nodes = idList(asArray(specEl?.WeaponSet2)[0]?.["@_nodes"]);
 
   const sockets = asArray(specEl?.Sockets?.Socket).map((s: any) => ({
     nodeId: toNum(s["@_nodeId"]) ?? 0,
@@ -73,6 +83,8 @@ function parseSpec(specEl: any): PobTreeSpec {
     classId: toNum(specEl["@_classId"]),
     ascendClassId: toNum(specEl["@_ascendClassId"]),
     nodes,
+    weaponSet1Nodes,
+    weaponSet2Nodes,
     sockets,
     url: textOf(specEl?.URL)?.trim() || undefined,
   };

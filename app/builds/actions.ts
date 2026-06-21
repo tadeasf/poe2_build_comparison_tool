@@ -70,3 +70,25 @@ export async function deleteBuild(formData: FormData): Promise<void> {
   await supabase.from("builds").delete().eq("id", id).eq("user_id", user.id);
   revalidatePath("/builds");
 }
+
+/**
+ * Mark both builds in a comparison public so the /share link is viewable without
+ * logging in. Owner-gated (the .eq(user_id) + RLS ensure only your own builds
+ * flip). Returns an error string on failure.
+ */
+export async function shareComparison(
+  sourceId: string,
+  targetId: string,
+): Promise<{ error?: string }> {
+  const user = await requireUser();
+  if (!sourceId || !targetId) return { error: "Missing build ids." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("builds")
+    .update({ is_public: true })
+    .in("id", [sourceId, targetId])
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+  return {};
+}

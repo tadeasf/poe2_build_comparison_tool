@@ -1,4 +1,4 @@
-import type { PobBuild, PobItem, PobSkillGroup } from "../pob/types";
+import type { PobBuild, PobItem, PobSkillGroup, PobTreeSpec } from "../pob/types";
 import { resolveNode } from "../tree/nodes";
 import type {
   AscendancyDiff,
@@ -13,6 +13,7 @@ import type {
   ModDiff,
   TreeDiff,
   TreeNodeRef,
+  WeaponSet,
 } from "./types";
 
 export * from "./types";
@@ -33,29 +34,61 @@ export function ascendancyDiff(source: PobBuild, target: PobBuild): AscendancyDi
 /* Passive tree                                                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Build a node-id -> weapon-set classifier for a tree spec. Nodes in neither
+ * weapon-set list are "common". Builds parsed before weapon-set support have no
+ * arrays, so everything classifies as "common" (preserves prior behavior).
+ */
+function weaponSetOf(spec: PobTreeSpec): (id: number) => WeaponSet {
+  const w1 = new Set(spec.weaponSet1Nodes ?? []);
+  const w2 = new Set(spec.weaponSet2Nodes ?? []);
+  return (id) => (w1.has(id) ? "set1" : w2.has(id) ? "set2" : "common");
+}
+
 export function treeDiff(source: PobBuild, target: PobBuild): TreeDiff {
   const s = new Set(source.tree.nodes);
   const t = new Set(target.tree.nodes);
-  const ref = (id: number): TreeNodeRef => {
+  const srcSetOf = weaponSetOf(source.tree);
+  const tgtSetOf = weaponSetOf(target.tree);
+
+  const ref = (id: number, set: WeaponSet): TreeNodeRef => {
     const info = resolveNode(id);
     return {
       id,
       name: info?.name,
       isNotable: info?.notable || info?.keystone || false,
       isAscendancy: info?.ascendancy != null,
+      set,
     };
   };
 
-  const toAllocate = [...t].filter((n) => !s.has(n)).map(ref);
-  const toRefund = [...s].filter((n) => !t.has(n)).map(ref);
+  const toAllocate = [...t].filter((n) => !s.has(n)).map((n) => ref(n, tgtSetOf(n)));
+  const toRefund = [...s].filter((n) => !t.has(n)).map((n) => ref(n, srcSetOf(n)));
+
+  // Nodes allocated in both builds whose weapon-set assignment changed.
+  const movedBetweenSets: TreeNodeRef[] = [];
+  for (const id of s) {
+    if (!t.has(id)) continue;
+    const from = srcSetOf(id);
+    const to = tgtSetOf(id);
+    if (from === to) continue;
+    const r = ref(id, to);
+    movedBetweenSets.push({ ...r, movedSet: true, fromSet: from, toSet: to });
+  }
 
   return {
     toAllocate,
     toRefund,
+    movedBetweenSets,
     sourceCount: s.size,
     targetCount: t.size,
     netChange: t.size - s.size,
   };
+}
+
+/** Human label for a weapon set, used in the checklist + UI badges. */
+export function weaponSetLabel(set: WeaponSet): string {
+  return set === "set1" ? "Weapon Set I" : set === "set2" ? "Weapon Set II" : "Common";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -258,6 +291,17 @@ function buildChecklist(
       detail: names.length
         ? `Notables: ${summarize(names)}`
         : `Net ${tree.netChange >= 0 ? "+" : ""}${tree.netChange} points`,
+    });
+  }
+  if (tree.movedBetweenSets.length) {
+    const moves = tree.movedBetweenSets
+      .map((n) => `${n.name ?? `Node ${n.id}`} (${weaponSetLabel(n.fromSet ?? "common")} → ${weaponSetLabel(n.toSet ?? "common")})`)
+      .slice(0, 6);
+    list.push({
+      id: "tree-moved-sets",
+      category: "tree",
+      action: `Reassign ${tree.movedBetweenSets.length} ${tree.movedBetweenSets.length === 1 ? "passive" : "passives"} between weapon sets`,
+      detail: moves.join(", ") + (tree.movedBetweenSets.length > 6 ? `, +${tree.movedBetweenSets.length - 6} more` : ""),
     });
   }
 

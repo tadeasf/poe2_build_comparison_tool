@@ -47,6 +47,47 @@ describe("compareBuilds", () => {
     expect(r.tree.netChange).toBe(-2);
   });
 
+  // Minimal build with explicit weapon-set membership, reusing the fixture's
+  // class/ascendancy so the comparison stays compatible.
+  const withTree = (nodes: number[], w1: number[], w2: number[]): PobBuild => ({
+    ...source,
+    tree: { ...source.tree, nodes, weaponSet1Nodes: w1, weaponSet2Nodes: w2 },
+  });
+
+  it("tags weapon-set membership and detects moves between sets", () => {
+    const s = withTree([1, 2, 3, 4], [2], [3]); // 2=Set I, 3=Set II, 1/4 common
+    const t = withTree([1, 2, 3, 5], [3], [5]); // 3=Set I, 5=Set II, 2 now common
+    const r = compareBuilds(s, t);
+
+    expect(r.tree.toAllocate.find((n) => n.id === 5)?.set).toBe("set2");
+    expect(r.tree.toRefund.find((n) => n.id === 4)?.set).toBe("common");
+
+    // 2: Set I -> common; 3: Set II -> Set I. Both moved.
+    expect(r.tree.movedBetweenSets.map((n) => n.id).sort()).toEqual([2, 3]);
+    const m3 = r.tree.movedBetweenSets.find((n) => n.id === 3);
+    expect(m3?.fromSet).toBe("set2");
+    expect(m3?.toSet).toBe("set1");
+    expect(m3?.movedSet).toBe(true);
+
+    // Surfaced in the checklist under the tree category.
+    expect(r.checklist.some((c) => c.id === "tree-moved-sets")).toBe(true);
+  });
+
+  it("treats builds without weapon-set data as all common", () => {
+    const s: PobBuild = {
+      ...source,
+      tree: { ...source.tree, nodes: [1, 2, 3], weaponSet1Nodes: undefined, weaponSet2Nodes: undefined },
+    };
+    const t: PobBuild = {
+      ...source,
+      tree: { ...source.tree, nodes: [1, 2, 4], weaponSet1Nodes: undefined, weaponSet2Nodes: undefined },
+    };
+    const r = compareBuilds(s, t);
+    expect(r.tree.movedBetweenSets).toEqual([]);
+    expect(r.tree.toAllocate.every((n) => n.set === "common")).toBe(true);
+    expect(r.tree.toRefund.every((n) => n.set === "common")).toBe(true);
+  });
+
   it("detects gem level changes and removed supports", () => {
     const r = compareBuilds(source, target);
     const skill0 = groupSkillName(source.skills[0]);

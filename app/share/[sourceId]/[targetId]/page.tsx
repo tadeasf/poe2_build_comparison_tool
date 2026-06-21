@@ -4,16 +4,16 @@ import { ComparisonView } from "@/components/comparison-view";
 import { Button } from "@/components/ui/button";
 import { compareBuilds } from "@/lib/diff";
 import { ascendancyIdOf, hydrateBuild } from "@/lib/pob/hydrate";
-import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function ComparisonPage({
+// Public, no-login comparison view. RLS (builds_select_own_or_public) returns the
+// builds only when their owner has marked them is_public via the Share button.
+export default async function SharedComparisonPage({
   params,
 }: {
   params: Promise<{ sourceId: string; targetId: string }>;
 }) {
   const { sourceId, targetId } = await params;
-  await requireUser();
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -31,9 +31,14 @@ export default async function ComparisonPage({
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
-      <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
-        <Link href="/compare">← New comparison</Link>
-      </Button>
+      <div className="mb-4 flex items-center justify-between">
+        <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+          Shared comparison · read-only
+        </span>
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/">Make your own →</Link>
+        </Button>
+      </div>
       <ComparisonView
         result={result}
         sourceName={sourceRow.name}
@@ -46,9 +51,6 @@ export default async function ComparisonPage({
         targetSet2={target.tree.weaponSet2Nodes ?? []}
         ascendancyId={ascendancyIdOf(source)}
         ascendancyName={source.ascendClassName}
-        sourceId={sourceId}
-        targetId={targetId}
-        shareable
       />
     </main>
   );

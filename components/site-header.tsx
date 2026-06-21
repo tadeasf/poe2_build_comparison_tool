@@ -8,12 +8,12 @@ export async function SiteHeader() {
   const user = await getUser();
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <Swords className="h-5 w-5 text-primary" />
           <span>PoE2 Build Diff</span>
         </Link>
-        <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+        <nav className="flex items-center gap-3 text-sm text-muted-foreground sm:gap-4">
           <Link href="/builds" className="transition-colors hover:text-foreground">
             Builds
           </Link>

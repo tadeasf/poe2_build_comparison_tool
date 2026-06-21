@@ -1,5 +1,6 @@
 import { ArrowRight, TriangleAlert } from "lucide-react";
 import { Checklist } from "@/components/checklist";
+import { ShareButton } from "@/components/share-button";
 import { PassiveTree } from "@/components/tree/passive-tree";
 import {
   Accordion,
@@ -19,6 +20,20 @@ function SectionCount({ n }: { n: number }) {
   );
 }
 
+/** Small "I"/"II" pill marking a weapon-set-specific passive. */
+function SetBadge({ set }: { set?: TreeNodeRef["set"] }) {
+  if (set !== "set1" && set !== "set2") return null;
+  const cls =
+    set === "set1"
+      ? "border-red-500/40 text-red-400"
+      : "border-green-500/40 text-green-400";
+  return (
+    <span className={`ml-1 rounded-sm border ${cls} px-1 text-[9px] font-semibold leading-tight`}>
+      {set === "set1" ? "I" : "II"}
+    </span>
+  );
+}
+
 function NodeList({ refs, tone }: { refs: TreeNodeRef[]; tone: "add" | "remove" }) {
   const notables = refs.filter((r) => r.isNotable);
   const minor = refs.length - notables.length;
@@ -31,9 +46,10 @@ function NodeList({ refs, tone }: { refs: TreeNodeRef[]; tone: "add" | "remove" 
       {notables.map((r) => (
         <span
           key={r.id}
-          className={`rounded border ${color} bg-background/40 px-1.5 py-0.5 text-[11px] font-medium`}
+          className={`inline-flex items-center rounded border ${color} bg-background/40 px-1.5 py-0.5 text-[11px] font-medium`}
         >
           {r.name ?? `Node ${r.id}`}
+          <SetBadge set={r.set} />
         </span>
       ))}
       {minor > 0 && (
@@ -45,18 +61,41 @@ function NodeList({ refs, tone }: { refs: TreeNodeRef[]; tone: "add" | "remove" 
   );
 }
 
+const SET_LABEL = { common: "Common", set1: "Set I", set2: "Set II" } as const;
+
 export function ComparisonView({
   result,
   sourceName,
   targetName,
   sourceNodes,
   targetNodes,
+  sourceSet1 = [],
+  sourceSet2 = [],
+  targetSet1 = [],
+  targetSet2 = [],
+  ascendancyId,
+  ascendancyName,
+  sourceId,
+  targetId,
+  shareable = false,
 }: {
   result: ComparisonResult;
   sourceName: string;
   targetName: string;
   sourceNodes: number[];
   targetNodes: number[];
+  sourceSet1?: number[];
+  sourceSet2?: number[];
+  targetSet1?: number[];
+  targetSet2?: number[];
+  /** ascendancyId (className+ascendClassId) to render its sub-tree panel. */
+  ascendancyId?: string;
+  ascendancyName?: string;
+  /** Build ids, used by the share button. */
+  sourceId?: string;
+  targetId?: string;
+  /** Show the "copy share link" control (authed compare page only). */
+  shareable?: boolean;
 }) {
   const { tree, items, gems } = result;
   const equipCount = items.slots.length;
@@ -66,16 +105,21 @@ export function ComparisonView({
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <div className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-          <span>{sourceName}</span>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <span>{targetName}</span>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+            <span>{sourceName}</span>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <span>{targetName}</span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {result.ascendancy.source} · level {result.meta.sourceLevel} →{" "}
+            {result.meta.targetLevel}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {result.ascendancy.source} · level {result.meta.sourceLevel} →{" "}
-          {result.meta.targetLevel}
-        </p>
+        {shareable && sourceId && targetId && (
+          <ShareButton sourceId={sourceId} targetId={targetId} />
+        )}
       </div>
 
       {!result.compatible && (
@@ -96,10 +140,33 @@ export function ComparisonView({
       {/* Visual tree map */}
       <div className="space-y-2">
         <h2 className="font-semibold">Passive tree map</h2>
-        <div className="h-[520px] w-full overflow-hidden rounded-lg border border-border/60 bg-card">
-          <PassiveTree sourceNodes={sourceNodes} targetNodes={targetNodes} />
+        <div className="h-[60vh] w-full overflow-hidden rounded-lg border border-border/60 bg-card sm:h-[520px]">
+          <PassiveTree
+            sourceNodes={sourceNodes}
+            targetNodes={targetNodes}
+            sourceSet1={sourceSet1}
+            sourceSet2={sourceSet2}
+            targetSet1={targetSet1}
+            targetSet2={targetSet2}
+          />
         </div>
       </div>
+
+      {/* Ascendancy sub-tree (own panel — sits far from the main tree) */}
+      {ascendancyId && (
+        <div className="space-y-2">
+          <h2 className="font-semibold">
+            Ascendancy{ascendancyName ? ` — ${ascendancyName}` : ""}
+          </h2>
+          <div className="h-[300px] w-full overflow-hidden rounded-lg border border-border/60 bg-card sm:h-[340px]">
+            <PassiveTree
+              ascendancy={ascendancyId}
+              sourceNodes={sourceNodes}
+              targetNodes={targetNodes}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Categorized detail */}
       <Accordion type="multiple" defaultValue={["tree", "equipment", "gems"]}>
@@ -129,12 +196,31 @@ export function ComparisonView({
                 <NodeList refs={tree.toRefund} tone="remove" />
               </div>
             )}
-            {tree.toAllocate.length === 0 && tree.toRefund.length === 0 && (
-              <p className="text-sm text-muted-foreground">Passive trees are identical.</p>
+            {tree.movedBetweenSets.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-amber-400">
+                  Reassign between weapon sets ({tree.movedBetweenSets.length})
+                </p>
+                <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+                  {tree.movedBetweenSets.map((r) => (
+                    <li key={r.id}>
+                      <span className="text-foreground">{r.name ?? `Node ${r.id}`}</span>{" "}
+                      {SET_LABEL[r.fromSet ?? "common"]} → {SET_LABEL[r.toSet ?? "common"]}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
+            {tree.toAllocate.length === 0 &&
+              tree.toRefund.length === 0 &&
+              tree.movedBetweenSets.length === 0 && (
+                <p className="text-sm text-muted-foreground">Passive trees are identical.</p>
+              )}
             <p className="text-xs text-muted-foreground">
-              Notables are named; minor passives are summarized. The interactive visual
-              tree overlay is coming next.
+              Notables are named; minor passives are summarized.{" "}
+              <span className="text-red-400">I</span> /{" "}
+              <span className="text-green-400">II</span> mark Weapon Set I / II passives. The visual
+              tree map above mirrors this diff.
             </p>
           </AccordionContent>
         </AccordionItem>

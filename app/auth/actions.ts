@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getSiteUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
 
 export type AuthState = { error?: string; message?: string } | null;
@@ -30,7 +31,11 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: displayName ? { display_name: displayName } : undefined },
+    options: {
+      data: displayName ? { display_name: displayName } : undefined,
+      // Point the confirmation link at the deployed app's callback route.
+      emailRedirectTo: `${getSiteUrl()}/auth/callback`,
+    },
   });
   if (error) return { error: error.message };
 

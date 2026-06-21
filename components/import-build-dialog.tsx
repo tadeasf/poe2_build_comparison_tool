@@ -43,7 +43,7 @@ export function ImportBuildDialog({ triggerLabel = "Import build" }: { triggerLa
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Import a build</DialogTitle>
           <DialogDescription>
@@ -64,7 +64,9 @@ export function ImportBuildDialog({ triggerLabel = "Import build" }: { triggerLa
               required
               rows={6}
               placeholder="eAHt…"
-              className="font-mono text-xs"
+              // field-sizing-fixed stops the box from auto-growing to fit a long
+              // pasted code; it stays ~6 rows and scrolls internally instead.
+              className="field-sizing-fixed max-h-48 resize-y font-mono text-xs"
             />
           </div>
           {state?.error && (

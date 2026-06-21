@@ -8,12 +8,23 @@ export interface AscendancyDiff {
   match: boolean;
 }
 
+/** Which weapon set a node's allocation belongs to. */
+export type WeaponSet = "common" | "set1" | "set2";
+
 export interface TreeNodeRef {
   id: number;
   /** Resolved name once the GGG tree data is wired (task: tree renderer). */
   name?: string;
   isNotable?: boolean;
   isAscendancy?: boolean;
+  /** Weapon-set membership in the build this ref came from. */
+  set?: WeaponSet;
+  /** Set true on refs in `movedBetweenSets` (allocated in both, set changed). */
+  movedSet?: boolean;
+  /** When `movedSet`, the source build's set. */
+  fromSet?: WeaponSet;
+  /** When `movedSet`, the target build's set. */
+  toSet?: WeaponSet;
 }
 
 export interface TreeDiff {
@@ -21,6 +32,12 @@ export interface TreeDiff {
   toAllocate: TreeNodeRef[];
   /** In source but not target — the player must refund these. */
   toRefund: TreeNodeRef[];
+  /**
+   * Allocated in BOTH builds but assigned to a different weapon set
+   * (e.g. common in source, Weapon Set I in target). Empty for builds without
+   * weapon-set data.
+   */
+  movedBetweenSets: TreeNodeRef[];
   sourceCount: number;
   targetCount: number;
   /** targetCount - sourceCount (net passive points spent). */

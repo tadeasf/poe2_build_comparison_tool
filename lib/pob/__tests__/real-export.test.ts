@@ -32,6 +32,19 @@ describe("real PoB2 export", () => {
     expect(build.tree.sockets.length).toBeGreaterThan(0);
   });
 
+  it("parses weapon-set passives (disjoint subsets of the full node list)", () => {
+    const w1 = build.tree.weaponSet1Nodes ?? [];
+    const w2 = build.tree.weaponSet2Nodes ?? [];
+    expect(w1.length).toBe(17);
+    expect(w2.length).toBe(16);
+    const all = new Set(build.tree.nodes);
+    expect(w1.every((n) => all.has(n))).toBe(true);
+    expect(w2.every((n) => all.has(n))).toBe(true);
+    // the two sets do not overlap
+    const s1 = new Set(w1);
+    expect(w2.some((n) => s1.has(n))).toBe(false);
+  });
+
   it("maps equipped item slots", () => {
     const slotNames = build.slots.map((s) => s.name);
     expect(slotNames).toEqual(

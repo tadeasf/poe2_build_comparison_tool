@@ -13,6 +13,8 @@ const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Tree activeSpec="1">
     <Spec treeVersion="0_2" classId="1" ascendClassId="1" nodes="0,1234,5678,9012">
       <URL>https://www.pathofexile.com/passive-skill-tree/AAAA</URL>
+      <WeaponSet1 nodes="1234"/>
+      <WeaponSet2 nodes="5678,9012"/>
       <Sockets><Socket nodeId="1234" itemId="3"/></Sockets>
     </Spec>
   </Tree>
@@ -66,6 +68,23 @@ describe("PoB decode + parse roundtrip", () => {
     expect(build.tree.treeVersion).toBe("0_2");
     expect(build.tree.url).toContain("passive-skill-tree");
     expect(build.tree.sockets).toEqual([{ nodeId: 1234, itemId: 3 }]);
+  });
+
+  it("parses weapon-set node lists as subsets of nodes", () => {
+    const build = parsePobXml(SAMPLE_XML);
+    expect(build.tree.weaponSet1Nodes).toEqual([1234]);
+    expect(build.tree.weaponSet2Nodes).toEqual([5678, 9012]);
+    const all = new Set(build.tree.nodes);
+    for (const n of [...build.tree.weaponSet1Nodes!, ...build.tree.weaponSet2Nodes!]) {
+      expect(all.has(n)).toBe(true);
+    }
+  });
+
+  it("yields empty weapon-set arrays when the elements are absent", () => {
+    const xml = SAMPLE_XML.replace(/<WeaponSet[12][^/]*\/>/g, "");
+    const build = parsePobXml(xml);
+    expect(build.tree.weaponSet1Nodes).toEqual([]);
+    expect(build.tree.weaponSet2Nodes).toEqual([]);
   });
 
   it("parses skill groups and flags supports", () => {

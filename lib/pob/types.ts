@@ -30,8 +30,15 @@ export interface PobTreeSpec {
   treeVersion?: string;
   classId?: number;
   ascendClassId?: number;
-  /** Allocated passive node ids. */
+  /** Allocated passive node ids (the full union: common + both weapon sets). */
   nodes: number[];
+  /**
+   * Nodes that apply only with Weapon Set I equipped. A disjoint subset of
+   * `nodes`; absent on builds parsed before weapon-set support landed.
+   */
+  weaponSet1Nodes?: number[];
+  /** Nodes that apply only with Weapon Set II equipped. Disjoint subset of `nodes`. */
+  weaponSet2Nodes?: number[];
   /** Jewel/socket assignments: which item sits in which tree socket node. */
   sockets: { nodeId: number; itemId: number }[];
   /** The pathofexile.com tree URL, if present. */
